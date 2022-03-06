@@ -29,6 +29,7 @@ import java.util.concurrent.TimeoutException;
 public class SystemService {
 
     private static HashMap<String, State> sStates = Maps.newHashMap();
+    private static HashMap<String, State> sSXXtates = Maps.newHashMap();
 
     /**
      * State of a known {@code init} service.

@@ -56,6 +56,17 @@
 
 #include "nativebridge/native_bridge.h"
 
+#include <sstream>
+#include <BWNativeHelper/BWCommon.h>
+#include <BWLog.h>
+#include <BWNativeHelper/BWNativeUtils.h>
+#include <BWNativeHelper/BWNativeHelper.h>
+#include <BWNativeHelper/BWMacro.h>
+#include <BWUtils/CFile.h>
+#include <JNIJava/JStringHelper.h>
+
+using namespace buwai;
+
 namespace {
 
 using android::String8;
@@ -433,6 +444,125 @@ void ckTime(uint64_t start, const char* where) {
 // The list of open zygote file descriptors.
 static FileDescriptorTable* gOpenFdTable = NULL;
 
+static bool InitInChild(JNIEnv* env, uid_t uid) {
+  bool result = false;
+  jclass clazzBWUtils = NULL;
+  jstring jPackageName = NULL;
+  do {
+    // 根据uid获得包名。
+    clazzBWUtils = env->FindClass("android/bw/BWUtils");
+    jmethodID methodGetPackageNameByUID = env->GetStaticMethodID(clazzBWUtils, "getPackageNameByUID", "(I)Ljava/lang/String;");
+    jPackageName = (jstring) env->CallStaticObjectMethod(clazzBWUtils, methodGetPackageNameByUID, uid);
+
+    if (NULL == jPackageName) {
+      BWLOGE("[-] InitInChild - NULL == jPackageName");
+      break;
+    }
+
+    // bwDumpFlags
+    jmethodID methodGetBWDumpFlags = env->GetStaticMethodID(clazzBWUtils, "getBWDumpFlags", "(Ljava/lang/String;)I");
+    int bwDumpFlags = env->CallStaticIntMethod(clazzBWUtils, methodGetBWDumpFlags, jPackageName);
+    if (BWDumpBase::BW_DUMP_FLAGS_INVALID == bwDumpFlags) {
+      bwDumpFlags = BWDumpBase::BW_DUMP_FLAGS_ALL;
+    }
+    String8 strBWDumpFlags(String8::format("%d", bwDumpFlags));
+    CString strPackageName = JStringToCString(env, jPackageName);
+
+    String8 bwAlternativeLogRootDir1(BW_LOG_DIR);
+    String8 bwAlternativeLogRootDir2(String8::format("/data/data/%s/bw/log", strPackageName.GetCString()));
+    String8* bwAlternativeLogRootDirs[] = {&bwAlternativeLogRootDir1, &bwAlternativeLogRootDir2};
+
+    String8  bwLogRootDir;
+
+    // 获取日志根目录。
+    for (uint32_t i = 0; i < array_size(bwAlternativeLogRootDirs); i++) {
+      CString dirPath(bwAlternativeLogRootDirs[i]->string());
+      CFile dir(dirPath);
+      // BWLOGI("[*] %s - %u. 路径：%s", __FUNCTION__, i, dir.GetPath().GetCString());
+      // 先判断日志根目录是否存在，如果不存在，则创建。
+      if (!dir.Exist()) {
+        if (!dir.MkDirs()) {
+          BWLOGE("[-] InitInChild - %d. 创建日志根目录失败！目录路径：%s。错误信息：%d-%s。",
+            i, bwAlternativeLogRootDirs[i]->string(), errno, strerror(errno));
+          continue;
+        }
+      }
+
+      // 判断目录是否可写。
+      if (0 == access(bwAlternativeLogRootDirs[i]->string(), W_OK)) {
+        // BWLOGI("[*] %s - 目录可写。", __FUNCTION__);
+        bwLogRootDir = bwAlternativeLogRootDirs[i]->string();
+        break;
+      } else {
+        BWLOGE("[-] InitInChild - %d. 日志根目录不可写！目录路径：%s。错误信息：%d-%s。",
+            i, bwAlternativeLogRootDirs[i]->string(), errno, strerror(errno));
+      }
+    }
+
+    // BWLOGI("[*] %s - 获取日志根目录逻辑完成。", __FUNCTION__);
+
+    if (bwLogRootDir.isEmpty()) {
+      BWLOGE("[-] InitInChild - 获取日志根目录失败！");
+      break;
+    }
+
+    // BWLOGI("[*] %s - 准备启动socket服务端。", __FUNCTION__);
+    // 启动socket服务端。
+    jmethodID methodIDStartBWAppAnalysisControlServer =
+      env->GetStaticMethodID(clazzBWUtils, "startBWAppAnalysisControlServer", "()Z");
+    // BWLOGI("[*] %s - methodIDStartBWAppAnalysisControlServer=%p",
+    //   __FUNCTION__, methodIDStartBWAppAnalysisControlServer);
+    if (env->CallStaticBooleanMethod(clazzBWUtils, methodIDStartBWAppAnalysisControlServer)) {
+      BWLOGI("[*] InitInChild - 启动socket服务端成功。");
+    } else {
+      BWLOGE("[-] InitInChild - 启动socket服务端失败。");
+      break;
+    }
+    // BWLOGI("[*] %s - 启动socket服务端完成。", __FUNCTION__);
+
+    /*if (-1 == chmod(bwLogRootDir.string(), S_IRWXU | S_IRWXU | S_IRWXG)) {
+      BWLOGE("[-] InitInChild - 设置日志根目录权限失败。目录路径：%s。", bwLogRootDir.c_str());
+    }
+    if (-1 == chmod(bwLogRootDir.string(), S_IRWXU | S_IRWXU | S_IRWXG)) {
+      BWLOGE("[-] InitInChild - 设置日志文件权限失败。文件路径：%s。", bwLogPath.c_str());
+    }*/
+    String8 strUID(String8::format("%d", uid));
+    String8 strMainThreadID(String8::format("%d", gettid()));
+
+    SimpleKeyValuePair initParams[] = {
+      {"mainThreadID", strMainThreadID.string()},
+      {"uid", strUID.string()},
+      {"packageName", strPackageName.GetCString()},
+      {"bwLogRootDir", bwLogRootDir.string()},
+      {"bwDumpFlags", strBWDumpFlags.string()}
+    };
+    if (BWNativeHelper::InitWhenChildStart(&initParams, array_size(initParams))) {
+      // BWLOGI("[*] %s - BWNativeHelper::InitWhenChildStart returned true", __FUNCTION__);
+      jmethodID methodInitAppProcessTraceMethodInfo = env->GetStaticMethodID(clazzBWUtils,
+        "initAppProcessTraceMethodInfo", "(Ljava/lang/String;)V");
+      // BWLOGI("[*] %s - methodInitAppProcessTraceMethodInfo=%p", __FUNCTION__, methodInitAppProcessTraceMethodInfo);
+      env->CallStaticVoidMethod(clazzBWUtils, methodInitAppProcessTraceMethodInfo, jPackageName);
+      // BWLOGI("[*] %s - call finished", __FUNCTION__);
+      result = true;
+    }
+  } while(false);
+
+  if (NULL != clazzBWUtils) {
+    env->DeleteLocalRef(clazzBWUtils);
+  }
+  if (NULL != jPackageName) {
+    env->DeleteLocalRef(jPackageName);
+  }
+  return result;
+}
+
+static bool needsRoot(JNIEnv* env, uid_t uid) {
+  // 根据uid获得包名。
+  jclass clazzBWUtils = env->FindClass("android/bw/BWUtils");
+  jmethodID methodIDNeedsRoot = env->GetStaticMethodID(clazzBWUtils, "needsRoot", "(I)Z");
+  return env->CallStaticBooleanMethod(clazzBWUtils, methodIDNeedsRoot, uid);
+}
+
 // Utility routine to fork zygote and specialize the child process.
 static pid_t ForkAndSpecializeCommon(JNIEnv* env, uid_t uid, gid_t gid, jintArray javaGids,
                                      jint debug_flags, jobjectArray javaRlimits,
@@ -467,7 +597,6 @@ static pid_t ForkAndSpecializeCommon(JNIEnv* env, uid_t uid, gid_t gid, jintArra
   if (pid == 0) {
     // The child process.
     gMallocLeakZygoteChild = 1;
-
 
     // Clean up any descriptors which must be closed immediately
     DetachDescriptors(env, fdsToClose);
@@ -581,6 +710,10 @@ static pid_t ForkAndSpecializeCommon(JNIEnv* env, uid_t uid, gid_t gid, jintArra
           RuntimeAbort(env);
         }
     }
+    // se_name_c_str其实就是包名。
+    BWLOGI("[*] ForkAndSpecializeCommon - gid=%d, uid=%d, is_system_server=%d,"
+      " se_info_c_str=%s, se_name_c_str=%s", gid, uid, is_system_server,
+      se_info_c_str, se_name_c_str);
     rc = selinux_android_setcontext(uid, is_system_server, se_info_c_str, se_name_c_str);
     if (rc == -1) {
       ALOGE("selinux_android_setcontext(%d, %d, \"%s\", \"%s\") failed", uid,
@@ -599,6 +732,14 @@ static pid_t ForkAndSpecializeCommon(JNIEnv* env, uid_t uid, gid_t gid, jintArra
 
     delete se_info;
     delete se_name;
+
+#if BW_CUSTOM_ROM_ENABLE == 1
+    if (InitInChild(env, uid)) {
+      BWLOGI("[*] ForkAndSpecializeCommon - 初始化子进程的BW数据成功。");
+    } else {
+      BWLOGE("[-] ForkAndSpecializeCommon - 初始化子进程的BW数据失败！");
+    }
+#endif
 
     UnsetSigChldHandler();
 

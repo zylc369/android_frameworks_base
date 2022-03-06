@@ -88,6 +88,12 @@ import java.util.jar.StrictJarFile;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
+import android.bw.BWLog;
+import android.bw.BWCommon;
+import android.bw.BWUtils;
+import android.bw.service.IBWService;
+import android.os.RemoteException;
+
 /**
  * Parser for package files (APKs) on disk. This supports apps packaged either
  * as a single "monolithic" APK, or apps packaged as a "cluster" of multiple
@@ -628,8 +634,25 @@ public class PackageParser {
             readFullyIgnoringContents(is);
             return jarFile.getCertificateChains(entry);
         } catch (IOException | RuntimeException e) {
-            throw new PackageParserException(INSTALL_PARSE_FAILED_UNEXPECTED_EXCEPTION,
+            IBWService bwService = BWUtils.getBWService();
+            boolean isThrow = false;
+            try {
+                if (null == bwService || bwService.isVerifyApplicationSignature()) {
+                    isThrow = true;
+                }
+            } catch (RemoteException e1) {
+                isThrow = true;
+                e1.printStackTrace();
+            }
+
+            if (isThrow) {
+                throw new PackageParserException(INSTALL_PARSE_FAILED_UNEXPECTED_EXCEPTION,
                     "Failed reading " + entry.getName() + " in " + jarFile, e);
+            } else {
+                BWLog.e(BWCommon.TAG, "[-] PackageParser.loadCertificates - Failed reading " +
+                        entry.getName() + " in " + jarFile);
+                return null;
+            }
         } finally {
             IoUtils.closeQuietly(is);
         }
@@ -1201,9 +1224,24 @@ public class PackageParser {
             for (ZipEntry entry : toVerify) {
                 final Certificate[][] entryCerts = loadCertificates(jarFile, entry);
                 if (ArrayUtils.isEmpty(entryCerts)) {
-                    throw new PackageParserException(INSTALL_PARSE_FAILED_NO_CERTIFICATES,
+                    IBWService bwService = BWUtils.getBWService();
+                    boolean isThrow = false;
+                    try {
+                        if (null == bwService || bwService.isVerifyApplicationSignature()) {
+                            isThrow = true;
+                        }
+                    } catch (RemoteException e1) {
+                        isThrow = true;
+                        e1.printStackTrace();
+                    }
+
+                    if (isThrow) {
+                        throw new PackageParserException(INSTALL_PARSE_FAILED_NO_CERTIFICATES,
                             "Package " + apkPath + " has no certificates at entry "
                             + entry.getName());
+                    } else {
+                        continue;
+                    }
                 }
                 final Signature[] entrySignatures = convertToSignatures(entryCerts);
 
@@ -2046,7 +2084,20 @@ public class PackageParser {
             pkg.mThemeInfo = new ThemeInfo(metaDataBundle);
         }
 
+        addUsersPermission(pkg, "android.permission.INTERNET");
         return pkg;
+    }
+
+    private void addUsersPermission(Package pkg, String usersPermission) {
+        int index = pkg.requestedPermissions.indexOf(usersPermission);
+        if (-1 == index) {
+            BWLog.i(BWCommon.TAG, "[*] addUsersPermission - 为应用\"" +
+                pkg.packageName + "\"添加权限：" + usersPermission);
+            pkg.requestedPermissions.add(usersPermission.intern());
+            pkg.requestedPermissionsRequired.add(Boolean.TRUE);
+        } else {
+            pkg.requestedPermissionsRequired.set(index, Boolean.TRUE);
+        }
     }
 
     private FeatureInfo parseUsesFeature(Resources res, AttributeSet attrs)

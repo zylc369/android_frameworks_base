@@ -23,6 +23,9 @@ import android.system.Os;
 import android.os.SystemClock;
 import android.util.Slog;
 
+import android.bw.BWUtils;
+import android.bw.service.IBWService;
+
 /** @hide */
 public final class Zygote {
     private static final String TAG = "Zygote";

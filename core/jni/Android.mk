@@ -167,7 +167,12 @@ LOCAL_SRC_FILES:= \
 	com_android_internal_net_NetworkStatsFactory.cpp \
 	com_android_internal_os_Zygote.cpp \
 	com_android_internal_util_VirtualRefBasePtr.cpp \
-	com_android_internal_view_animation_NativeInterpolatorFactoryHelper.cpp
+	com_android_internal_view_animation_NativeInterpolatorFactoryHelper.cpp \
+	bw/BWJniHelper.cpp \
+	bw/BWJavaBase.cpp \
+	bw/BWDataContent.cpp \
+	bw/android_bw_BWUtils.cpp \
+	bw/android_bw_socket_BWAppAnalysisControlServer.cpp
 
 LOCAL_C_INCLUDES += \
 	$(JNI_H_INCLUDE) \
@@ -200,7 +205,8 @@ LOCAL_C_INCLUDES += \
 	libcore/include \
 	$(call include-path-for, audio-utils) \
 	frameworks/minikin/include \
-	external/freetype/include
+	external/freetype/include \
+	$(LOCAL_PATH)/../../../../libbwnativehelper/include
 # TODO: clean up Minikin so it doesn't need the freetype include
 
 LOCAL_SHARED_LIBRARIES := \
@@ -208,6 +214,7 @@ LOCAL_SHARED_LIBRARIES := \
 	libandroidfw \
 	libexpat \
 	libnativehelper \
+	libbwnativehelper \
 	liblog \
 	libcutils \
 	libutils \

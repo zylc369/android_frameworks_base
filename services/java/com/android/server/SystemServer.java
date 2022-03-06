@@ -109,6 +109,8 @@ import com.android.server.wallpaper.WallpaperManagerService;
 import com.android.server.webkit.WebViewUpdateService;
 import com.android.server.wm.WindowManagerService;
 
+import com.android.server.bw.*;
+
 import dalvik.system.VMRuntime;
 import dalvik.system.PathClassLoader;
 import java.lang.reflect.Constructor;
@@ -119,6 +121,12 @@ import java.util.TimerTask;
 
 import dalvik.system.PathClassLoader;
 import java.lang.reflect.Constructor;
+
+import java.io.IOException;
+import java.io.StringWriter;
+import java.io.PrintWriter;
+import java.io.FileWriter;
+import android.bw.BWLog;
 
 public final class SystemServer {
     private static final String TAG = "SystemServer";
@@ -170,6 +178,8 @@ public final class SystemServer {
     private PackageManagerService mPackageManagerService;
     private PackageManager mPackageManager;
     private ContentResolver mContentResolver;
+
+    private BWService mBWService;
 
     private boolean mOnlyCore;
     private boolean mFirstBoot;
@@ -283,6 +293,7 @@ public final class SystemServer {
             startBootstrapServices();
             startCoreServices();
             startOtherServices();
+            startBWService();
         } catch (Throwable ex) {
             Slog.e("System", "******************************************");
             Slog.e("System", "************ Failure starting system services", ex);
@@ -297,6 +308,23 @@ public final class SystemServer {
         // Loop forever.
         Looper.loop();
         throw new RuntimeException("Main thread loop unexpectedly exited");
+    }
+
+    private void startBWService() {
+        BWLog.i("debug", "[*] entry startBWService");
+        try {
+            mBWService = BWService.getInstance(mSystemContext);
+            if (mBWService.isInitSuccess()) {
+                mBWService.setSystemServer(this);
+                ServiceManager.addService(BWService.SERVICE_NAME, mBWService);
+                BWLog.i("debug", "[*] BWService add success.");
+            } else {
+                BWLog.e("debug", "[*] BWService init failed.");
+            }
+        } catch (Exception e) {
+            BWLog.e("debug", e);
+        }
+        BWLog.i("debug", "[*] leave startBWService");
     }
 
     private void reportWtf(String msg, Throwable e) {
@@ -1442,5 +1470,9 @@ public final class SystemServer {
         } catch (Throwable e) {
             Slog.i(TAG, "starting DPM Service", e);
         }
+    }
+
+    public PackageManagerService getPackageManagerService() {
+        return mPackageManagerService;
     }
 }

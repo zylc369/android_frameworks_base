@@ -1,0 +1,7 @@
+添加或修改数据库需要以下工作：
+1. 修改BWDatabase中创建表的语句。
+2. 修改BWDatabase中对相关表的增删改查代码。
+3. 修改Base类中的writeToParcel方法、equals方法、to<表名>方法和CREATOR.createFromParcel方法。
+4. 修改native层对Java层Base类的反射调用相关代码。如：BWDataContent.h和BWDataContent.cpp文件。
+5. 修改BWCommon.h和BWCommon.cpp中的与数据库数据相关的类中的字段或方法。
+6. 如果添加了一张新表，有可能需要在InstrumentationExt.h和InstrumentationExt.cpp中添加代码。

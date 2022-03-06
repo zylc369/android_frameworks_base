@@ -261,6 +261,11 @@ import libcore.util.EmptyArray;
 
 import com.android.services.SecurityBridge.api.PackageManagerMonitor;
 
+import android.bw.BWCommon;
+import android.bw.BWLog;
+import android.os.ServiceManager;
+import android.bw.service.IBWService;
+
 /**
  * Keep track of all those .apks everywhere.
  * 
@@ -2132,6 +2137,23 @@ public class PackageManagerService extends IPackageManager.Stub {
             }
         }
         return null;
+    }
+
+    public String getPackageNameByUID(int userId) {
+        String packageName = null;
+
+        // 明明包存在，sUserManager.exists为什么会返回false哪？
+        // if (!sUserManager.exists(userId)) return null;
+
+        synchronized (mPackages) {
+            for (PackageParser.Package pkg : mPackages.values()) {
+                if (pkg.applicationInfo.uid == userId) {
+                    packageName = pkg.packageName;
+                    break;
+                }
+            }
+        }
+        return packageName;
     }
 
     @Override
@@ -12090,7 +12112,28 @@ public class PackageManagerService extends IPackageManager.Stub {
             }
         }
 
-        return res ? PackageManager.DELETE_SUCCEEDED : PackageManager.DELETE_FAILED_INTERNAL_ERROR;
+        if (res) {
+            IBWService ibwService = null;
+            IBinder iBinder = ServiceManager.getService("bwservice");
+            if (null == iBinder) {
+                BWLog.e(BWCommon.TAG, "[-] deletePackageX - 获得bwservice失败！");
+            } else {
+                ibwService = IBWService.Stub.asInterface(iBinder);
+            }
+            if (null != ibwService) {
+                try {
+                    ibwService.clearWhenAppUninstall(info.uid);
+                } catch (RemoteException e) {
+                    e.printStackTrace();
+                }
+            } else {
+                BWLog.e(BWCommon.TAG, "[-] deletePackageX - ibwService == null");
+            }
+
+            return PackageManager.DELETE_SUCCEEDED;
+        } else {
+            return PackageManager.DELETE_FAILED_INTERNAL_ERROR;
+        }
     }
 
     static class PackageRemovedInfo {

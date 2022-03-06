@@ -45,6 +45,12 @@ import android.util.TimeUtils;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 
+import android.bw.BWCommon;
+import android.bw.BWLog;
+import android.os.ServiceManager;
+import android.bw.service.IBWService;
+import android.os.RemoteException;
+
 /**
  * Full information about a particular process that
  * is currently running.
@@ -530,6 +536,23 @@ final class ProcessRecord {
             EventLog.writeEvent(EventLogTags.AM_KILL, userId, pid, processName, setAdj, reason);
             Process.killProcessQuiet(pid);
             Process.killProcessGroup(uid, pid);
+
+            // 关闭与进程相关的socket。
+            IBWService ibwService = null;
+            IBinder iBinder = ServiceManager.getService("bwservice");
+            if (null == iBinder) {
+                BWLog.e(BWCommon.TAG, "获得bwservice失败！");
+            } else {
+                ibwService = IBWService.Stub.asInterface(iBinder);
+            }
+            if (null != ibwService) {
+                try {
+                    ibwService.clearWhenProcessGroupKilled(info.uid);
+                } catch (RemoteException e) {
+                    e.printStackTrace();
+                }
+            }
+
             if (!persistent) {
                 killed = true;
                 killedByAm = true;

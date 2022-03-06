@@ -413,6 +413,8 @@ LOCAL_SRC_FILES += \
 	packages/services/Proxy/com/android/net/IProxyCallback.aidl \
 	packages/services/Proxy/com/android/net/IProxyPortListener.aidl \
         telephony/java/com/android/ims/internal/IImsConfig.aidl \
+        bwservices/java/android/bw/service/IBWService.aidl
+
 
 
 # FRAMEWORKS_BASE_JAVA_SRC_DIRS comes from build/core/pathmap.mk
@@ -609,7 +611,14 @@ aidl_files := \
 	frameworks/base/core/java/android/bluetooth/le/ScanFilter.aidl \
 	frameworks/base/core/java/android/bluetooth/le/ScanResult.aidl \
 	frameworks/base/core/java/android/bluetooth/BluetoothDevice.aidl \
-	frameworks/base/core/java/android/database/CursorWindow.aidl
+	frameworks/base/core/java/android/database/CursorWindow.aidl \
+	frameworks/base/bwservices/java/android/bw/db/base/MethodLocation.aidl \
+	frameworks/base/bwservices/java/android/bw/db/base/InstructionLocation.aidl \
+	frameworks/base/bwservices/java/android/bw/db/base/AppIDBase.aidl \
+	frameworks/base/bwservices/java/android/bw/db/base/MethodIDBase.aidl \
+	frameworks/base/bwservices/java/android/bw/db/base/HookMethodInstInfoBase.aidl \
+	frameworks/base/bwservices/java/android/bw/db/base/TraceMethodInfoBase.aidl \
+	frameworks/base/bwservices/java/android/bw/db/base/BWDumpBase.aidl
 
 gen := $(TARGET_OUT_COMMON_INTERMEDIATES)/framework.aidl
 $(gen): PRIVATE_SRC_FILES := $(aidl_files)
